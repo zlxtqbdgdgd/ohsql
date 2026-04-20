@@ -2,6 +2,8 @@
 
 `ohsql` 是一款面向泛 SQL 场景与鲲鹏环境的 AI 命令行工具。例如 MongoDB 在鲲鹏 920 上的调优场景。
 
+这个文档是 `../ohsql/README.md` 的维护底稿；后续凡是对外定位、安装说明或 `settings.json` 指引发生变化，都应同步更新发布仓 README。
+
 如果你是第一次安装 `ohsql`，这份 README 只回答三件事：
 - 怎么安装
 - 安装后文件在哪
@@ -107,7 +109,7 @@ ohsql --version
 
 ### 3. 使用代理或兼容网关
 
-如果你不是直连官方接口，而是走代理、网关或兼容服务，只需要把 `base_url` 填上：
+如果你不是直连官方接口，而是走代理、网关或自建兼容服务，只需要把 `base_url` 填上：
 
 ```json
 {
@@ -245,3 +247,9 @@ Remove-Item -Recurse -Force $env:USERPROFILE\.ohsql
 
 - macOS Apple Silicon
 - Windows x64
+
+暂不支持：
+
+- Intel Mac
+- Windows on ARM
+- Linux
