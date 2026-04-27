@@ -200,11 +200,17 @@ Commands:
 
 ## 更新
 
+显式触发更新：
+
 ```bash
 ohsql update
 ```
 
-启动时会做一次 24 小时节流的静默检查。要关闭自动更新：
+后台机制：启动时做一次 24 小时节流的轻量检查（只 fetch 最新版本号，不下载），发现新版本只是写到本地节流文件——**不会自动安装**，需要你显式跑 `ohsql update` 才装。这样不会在你打开 ohsql 时偷偷下载几百兆 tarball。
+
+`ohsql update` 内部直接调用 install 脚本（macOS 走 `install.sh`、Windows 走 `install.ps1`），所以走的是你**首装能跑通的同一条网络路径**——会自动用系统代理 / 系统证书 store。如果首装能成功，update 就一定能成功。
+
+要完全关闭启动时的检查：
 
 ```bash
 # macOS / Linux
