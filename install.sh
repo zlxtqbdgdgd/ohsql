@@ -84,6 +84,24 @@ mkdir -p "$DEST"
 info "Extracting to $DEST"
 tar -xzf "$TARBALL_PATH" -C "$DEST"
 
+# 5.5 native module ABI 对齐
+# tarball 里的 better-sqlite3 prebuild 是 GitHub Actions 那台 runner 的 Node 版本
+# (release.yml 用 Node 22 → NODE_MODULE_VERSION 127)。用户本地 Node 大概率是另一个
+# 版本（24+ 的用户尤其多），加载就 ERR_DLOPEN_FAILED。
+# better-sqlite3 把多 Node major 的 prebuild 都发到了它自己的 GitHub Releases，
+# 在用户机器上跑一次 prebuild-install --force 就能拉对应 ABI 的 .node 覆盖。
+PREBUILD_INSTALL_BIN="$DEST/node_modules/prebuild-install/bin.js"
+BSQ_DIR="$DEST/node_modules/better-sqlite3"
+if [ -f "$PREBUILD_INSTALL_BIN" ] && [ -d "$BSQ_DIR" ]; then
+  info "Refreshing better-sqlite3 prebuild for $(node -v)"
+  if ! ( cd "$BSQ_DIR" && node "$PREBUILD_INSTALL_BIN" --force ); then
+    warn "prebuild-install failed; ohsql may crash with NODE_MODULE_VERSION mismatch."
+    warn "  Manual fix: cd \"$BSQ_DIR\" && node \"$PREBUILD_INSTALL_BIN\" --force"
+  fi
+else
+  warn "prebuild-install / better-sqlite3 missing in tarball; native module ABI not refreshed."
+fi
+
 # 6. 原子切换 current
 TMP_LINK="$CURRENT_LINK.tmp-$$"
 rm -f "$TMP_LINK"

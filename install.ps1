@@ -117,6 +117,29 @@ if ($LASTEXITCODE -ne 0) {
     Die "tar extract failed: $tarResult"
 }
 
+# 5.5 native module ABI 对齐
+# tarball 里的 better-sqlite3 prebuild 是 GitHub Actions runner 编译的 (Node 22 →
+# NODE_MODULE_VERSION 127)。用户本地 Node 大概率不是 22（Node 24 → 137 直接 dlopen 失败）。
+# better-sqlite3 把所有 Node major 的 prebuild 都发到了上游 GitHub Releases，
+# 跑一次 prebuild-install --force 就能拉对应 ABI 的 .node 覆盖。
+$PrebuildInstallBin = Join-Path $Dest 'node_modules\prebuild-install\bin.js'
+$BsqDir             = Join-Path $Dest 'node_modules\better-sqlite3'
+if ((Test-Path $PrebuildInstallBin) -and (Test-Path $BsqDir)) {
+    Info "Refreshing better-sqlite3 prebuild for Node v$nodeVer"
+    Push-Location $BsqDir
+    try {
+        & node $PrebuildInstallBin --force
+        if ($LASTEXITCODE -ne 0) {
+            Warn "prebuild-install failed (exit $LASTEXITCODE); ohsql may crash with NODE_MODULE_VERSION mismatch."
+            Warn "  Manual fix: cd `"$BsqDir`"; node `"$PrebuildInstallBin`" --force"
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    Warn "prebuild-install / better-sqlite3 missing in tarball; native module ABI not refreshed."
+}
+
 # 6. 原子切 current（directory junction —— 不要 admin）
 $TmpLink = "$CurrentLink.tmp-$PID"
 if (Test-Path $TmpLink) { Remove-Item $TmpLink -Recurse -Force }
