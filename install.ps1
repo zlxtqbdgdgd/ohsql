@@ -175,13 +175,22 @@ if ($LASTEXITCODE -ne 0) {
 if (Test-Path $CurrentLink) { Remove-Item $CurrentLink -Recurse -Force }
 Move-Item -Force -LiteralPath $TmpLink -Destination $CurrentLink
 
-# 7. 写 shim
+# 7. 写 shim —— 两份
+#   (a) ohsql.cmd —— PowerShell / cmd.exe 走这个，靠 PATHEXT 自动追加 .cmd
+#   (b) ohsql      —— Git Bash 走这个，POSIX 查找不读 PATHEXT，必须有无扩展名同名文件
+#                     bash 通过 shebang 找到 sh 解释器；文件需 LF 换行，否则
+#                     `\r` 会被 shebang parser 当成路径一部分爆 "bad interpreter"
 [void](New-Item -ItemType Directory -Force -Path $BinDir)
-$ShimPath = Join-Path $BinDir 'ohsql.cmd'
-Set-Content -LiteralPath $ShimPath -Encoding ASCII -Value @'
+$CmdShimPath = Join-Path $BinDir 'ohsql.cmd'
+Set-Content -LiteralPath $CmdShimPath -Encoding ASCII -Value @'
 @echo off
 node "%USERPROFILE%\.ohsql\current\dist\cli.js" %*
 '@
+
+$BashShimPath = Join-Path $BinDir 'ohsql'
+$bashShim = "#!/usr/bin/env bash`nexec node `"`$HOME/.ohsql/current/dist/cli.js`" `"`$@`"`n"
+# WriteAllText + UTF8 (无 BOM) 才能拿到纯 LF；Set-Content 会按 PS 默认在 Win 上写 CRLF
+[System.IO.File]::WriteAllText($BashShimPath, $bashShim, (New-Object System.Text.UTF8Encoding $false))
 
 # 8. 加入 User PATH（如果还没在）
 $userPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
