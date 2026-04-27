@@ -30,7 +30,7 @@ ohsql --version
 
 ### 安装前要求
 
-- **Node.js 18+**
+- **Node.js 20+**
   - macOS：`brew install node`
   - Windows：`winget install --id OpenJS.NodeJS.LTS`
 - **Windows 使用 Bash tool 还需要 Git for Windows**

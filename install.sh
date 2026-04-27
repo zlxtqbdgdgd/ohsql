@@ -38,11 +38,11 @@ info "Platform: $PLAT"
 
 # 2. Node.js 检查
 if ! command -v node >/dev/null 2>&1; then
-  die "Node.js not found. Install via 'brew install node' or https://nodejs.org (need >= 18)."
+  die "Node.js not found. Install via 'brew install node' or https://nodejs.org (need >= 20)."
 fi
 NODE_MAJOR=$(node -p "process.versions.node.split('.')[0]")
-if [ "$NODE_MAJOR" -lt 18 ]; then
-  die "Node.js $(node -v) is too old. Need >= 18."
+if [ "$NODE_MAJOR" -lt 20 ]; then
+  die "Node.js $(node -v) is too old. Need >= 20."
 fi
 info "Node.js $(node -v) ✓"
 
@@ -85,21 +85,31 @@ info "Extracting to $DEST"
 tar -xzf "$TARBALL_PATH" -C "$DEST"
 
 # 5.5 native module ABI 对齐
-# tarball 里的 better-sqlite3 prebuild 是 GitHub Actions 那台 runner 的 Node 版本
-# (release.yml 用 Node 22 → NODE_MODULE_VERSION 127)。用户本地 Node 大概率是另一个
-# 版本（24+ 的用户尤其多），加载就 ERR_DLOPEN_FAILED。
-# better-sqlite3 把多 Node major 的 prebuild 都发到了它自己的 GitHub Releases，
-# 在用户机器上跑一次 prebuild-install --force 就能拉对应 ABI 的 .node 覆盖。
-PREBUILD_INSTALL_BIN="$DEST/node_modules/prebuild-install/bin.js"
+# tarball 里的 better-sqlite3 prebuild 是 GitHub Actions runner 编的（Node 22 →
+# NODE_MODULE_VERSION 127）。用户本地 Node 大概率不是 22，加载就 ERR_DLOPEN_FAILED。
+# better-sqlite3 把每个 Node major 的 prebuild 都发到了上游 Release，按当前 Node 的
+# NODE_MODULE_VERSION 拼 URL 直接拉 prebuild tarball 解压覆盖即可。
+#
+# 不用 prebuild-install：它内部走 Node simple-get，**不读系统代理 + 不读系统证书 store**，
+# 企业网下必超时。curl 默认吃 HTTP(S)_PROXY / 系统 trust store——主 tarball 既然能下，
+# prebuild tarball 也一定能下。
 BSQ_DIR="$DEST/node_modules/better-sqlite3"
-if [ -f "$PREBUILD_INSTALL_BIN" ] && [ -d "$BSQ_DIR" ]; then
-  info "Refreshing better-sqlite3 prebuild for $(node -v)"
-  if ! ( cd "$BSQ_DIR" && node "$PREBUILD_INSTALL_BIN" --force ); then
-    warn "prebuild-install failed; ohsql may crash with NODE_MODULE_VERSION mismatch."
-    warn "  Manual fix: cd \"$BSQ_DIR\" && node \"$PREBUILD_INSTALL_BIN\" --force"
+BSQ_PKG_JSON="$BSQ_DIR/package.json"
+if [ -f "$BSQ_PKG_JSON" ]; then
+  BSQ_VER=$(node -p "require('$BSQ_PKG_JSON').version")
+  NMV=$(node -p "process.versions.modules")
+  PREBUILD_NAME="better-sqlite3-v${BSQ_VER}-node-v${NMV}-${PLAT}.tar.gz"
+  PREBUILD_URL="https://github.com/WiseLibs/better-sqlite3/releases/download/v${BSQ_VER}/${PREBUILD_NAME}"
+  PREBUILD_PATH="$CACHE_DIR/$PREBUILD_NAME"
+  info "Refreshing better-sqlite3 prebuild (NODE_MODULE_VERSION $NMV) for $(node -v)"
+  if curl -fsSL "$PREBUILD_URL" -o "$PREBUILD_PATH" && tar -xzf "$PREBUILD_PATH" -C "$BSQ_DIR"; then
+    :
+  else
+    warn "Could not refresh better-sqlite3 prebuild; ohsql may crash with NODE_MODULE_VERSION mismatch."
+    warn "  Manual fix: curl -fsSL '$PREBUILD_URL' -o '$PREBUILD_PATH' && tar -xzf '$PREBUILD_PATH' -C '$BSQ_DIR'"
   fi
 else
-  warn "prebuild-install / better-sqlite3 missing in tarball; native module ABI not refreshed."
+  warn "better-sqlite3 missing in tarball; native module ABI not refreshed."
 fi
 
 # 6. 原子切换 current

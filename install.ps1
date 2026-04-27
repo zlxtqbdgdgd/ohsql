@@ -34,15 +34,15 @@ if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
 }
 Info "Platform: $Platform"
 
-# 2. Node.js >= 18
+# 2. Node.js >= 20
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
-    Die "Node.js not found. Install via 'winget install --id OpenJS.NodeJS.LTS' or https://nodejs.org (need >= 18)."
+    Die "Node.js not found. Install via 'winget install --id OpenJS.NodeJS.LTS' or https://nodejs.org (need >= 20)."
 }
 $nodeVer = (& node -p "process.versions.node").Trim()
 $nodeMajor = [int](($nodeVer -split '\.')[0])
-if ($nodeMajor -lt 18) {
-    Die "Node.js $nodeVer is too old. Need >= 18."
+if ($nodeMajor -lt 20) {
+    Die "Node.js $nodeVer is too old. Need >= 20."
 }
 Info "Node.js v$nodeVer OK"
 
@@ -118,26 +118,39 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 5.5 native module ABI 对齐
-# tarball 里的 better-sqlite3 prebuild 是 GitHub Actions runner 编译的 (Node 22 →
-# NODE_MODULE_VERSION 127)。用户本地 Node 大概率不是 22（Node 24 → 137 直接 dlopen 失败）。
-# better-sqlite3 把所有 Node major 的 prebuild 都发到了上游 GitHub Releases，
-# 跑一次 prebuild-install --force 就能拉对应 ABI 的 .node 覆盖。
-$PrebuildInstallBin = Join-Path $Dest 'node_modules\prebuild-install\bin.js'
-$BsqDir             = Join-Path $Dest 'node_modules\better-sqlite3'
-if ((Test-Path $PrebuildInstallBin) -and (Test-Path $BsqDir)) {
-    Info "Refreshing better-sqlite3 prebuild for Node v$nodeVer"
-    Push-Location $BsqDir
+# tarball 里的 better-sqlite3 prebuild 是 GitHub Actions runner 编的（Node 22 →
+# NODE_MODULE_VERSION 127）。用户本地 Node 大概率不是 22（Node 24 → 137 直接 dlopen 失败）。
+# better-sqlite3 把每个 Node major 的 prebuild 都发到了上游 Release，按当前 Node 的
+# NODE_MODULE_VERSION 拼 URL 直接拉 prebuild tarball 解压覆盖即可。
+#
+# 不用 prebuild-install：它内部走 Node 自带的 simple-get/https，**不读系统代理 +
+# 不读系统证书 store**，企业网下必超时。Invoke-WebRequest 走 WinHTTP 默认吃系统配置——
+# 主 tarball 既然能下，prebuild tarball 也一定能下。
+$BsqDir = Join-Path $Dest 'node_modules\better-sqlite3'
+$BsqPkgJson = Join-Path $BsqDir 'package.json'
+if (Test-Path $BsqPkgJson) {
+    $bsqVer = (Get-Content -Raw -LiteralPath $BsqPkgJson | ConvertFrom-Json).version
+    $nmv    = (& node -p "process.versions.modules").Trim()
+    $prebuildName = "better-sqlite3-v$bsqVer-node-v$nmv-$Platform.tar.gz"
+    $prebuildUrl  = "https://github.com/WiseLibs/better-sqlite3/releases/download/v$bsqVer/$prebuildName"
+    $prebuildPath = Join-Path $CacheDir $prebuildName
+    Info "Refreshing better-sqlite3 prebuild (NODE_MODULE_VERSION $nmv) for Node v$nodeVer"
     try {
-        & node $PrebuildInstallBin --force
+        Invoke-WebRequest -Uri $prebuildUrl -OutFile $prebuildPath -UseBasicParsing
+        $extractResult = & tar.exe -xzf $prebuildPath -C $BsqDir 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Warn "prebuild-install failed (exit $LASTEXITCODE); ohsql may crash with NODE_MODULE_VERSION mismatch."
-            Warn "  Manual fix: cd `"$BsqDir`"; node `"$PrebuildInstallBin`" --force"
+            Warn "tar extract failed for $prebuildName : $extractResult"
+            Warn "  ohsql may crash with NODE_MODULE_VERSION mismatch."
         }
-    } finally {
-        Pop-Location
+    } catch {
+        Warn "Could not download $prebuildName : $($_.Exception.Message)"
+        Warn "  ohsql may crash with NODE_MODULE_VERSION mismatch."
+        Warn "  Manual fix: 把"
+        Warn "    $prebuildUrl"
+        Warn "  下下来后跑 tar.exe -xzf <tarball> -C `"$BsqDir`""
     }
 } else {
-    Warn "prebuild-install / better-sqlite3 missing in tarball; native module ABI not refreshed."
+    Warn "better-sqlite3 missing in tarball; native module ABI not refreshed."
 }
 
 # 6. 原子切 current（directory junction —— 不要 admin）
