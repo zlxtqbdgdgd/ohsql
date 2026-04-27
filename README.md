@@ -123,6 +123,28 @@ ohsql --version
 }
 ```
 
+### 4. Anthropic 反代只认 `Authorization: Bearer`
+
+很多企业自建反代用 Bearer token 鉴权，不接受官方 SDK 默认的 `x-api-key` 头
+（401 Invalid API key 多半是这个原因）。`auth_source` 改成
+`anthropic_auth_token`，client 就会改用 `Authorization: Bearer <api_key>` ——
+跟 Claude Code 的 `ANTHROPIC_AUTH_TOKEN` 环境变量是同一回事。
+
+```json
+{
+  "active_profile": "anthropic-bearer",
+  "profiles": {
+    "anthropic-bearer": {
+      "api_format": "anthropic",
+      "auth_source": "anthropic_auth_token",
+      "default_model": "MiniMax-M2.7",
+      "base_url": "http://your-internal-gateway:8888/",
+      "api_key": "sk-..."
+    }
+  }
+}
+```
+
 ### 关键字段
 
 | 字段 | 含义 |
@@ -130,10 +152,10 @@ ohsql --version
 | `active_profile` | 当前默认使用哪个 profile（多 provider 时切这一个字段即可） |
 | `profiles` | 所有 provider 配置都放这里，可以同时存多份 |
 | `api_format` | 接口协议：`anthropic` / `openai` / `codex` |
-| `auth_source` | 认证方式标记 |
+| `auth_source` | 认证头风格：`anthropic_api_key`（→ `x-api-key`，默认）/ `anthropic_auth_token`（→ `Authorization: Bearer`）/ `openai_api_key` |
 | `default_model` | 默认模型名 |
 | `base_url` | `null` 走 SDK 默认 endpoint；填 URL 走代理 / 私有网关 |
-| `api_key` | 你的 API Key |
+| `api_key` | 你的 API Key（`anthropic_auth_token` 模式下当成 Bearer token 用） |
 
 ### 环境变量会覆盖文件配置
 
