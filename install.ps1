@@ -13,6 +13,17 @@
 
 $ErrorActionPreference = 'Stop'
 
+# Windows PowerShell 5.x 默认 SecurityProtocol 是 SSL3/TLS 1.0，但 GitHub.com 已经
+# 只接受 TLS 1.2+。表现就是首条 Invoke-WebRequest 抛
+#   "请求被中止: 未能创建 SSL/TLS 安全通道"
+# 强制把 TLS 1.2 OR 进当前协议集合（保留可能存在的更高版本，比如 TLS 1.3）。
+try {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {
+    # PS 7+ 默认就是 TLS 1.2/1.3，这里失败也不致命，IWR 自己会再 negotiate
+}
+
 $Repo         = 'zlxtqbdgdgd/ohsql'
 $Platform     = 'win32-x64'
 $ConfigDir    = Join-Path $env:USERPROFILE '.ohsql'
